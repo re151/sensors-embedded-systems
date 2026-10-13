@@ -9,6 +9,8 @@
 /build/
 /install/
 /log/
+/src/py_srvcli
+/src/turtlebot3_simulations
 
 # IDE
 

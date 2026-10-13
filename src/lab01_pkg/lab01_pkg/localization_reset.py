@@ -37,6 +37,7 @@ class Localization(Node):
         self.time = 1.0 #seconds -> 1Hz
         self.timer = self.create_timer(self.time, self.timer_callback)
 
+        self.velocity = 1 #m/s
         self.x = 0.0 #Robot's position along the X-axis
         self.y = 0.0 #Robot's position along the Y-axis
 
@@ -48,8 +49,8 @@ class Localization(Node):
         # Update the robot's position based on the received velocity command
         # self.get_logger().info(f'I received: vel_x: {msg.linear.x},vel_y: {msg.linear.y}') 
 
-        self.x += msg.linear.x * self.time #Deslocamento = velocidade * tempo, sendo que o tempo é 1 segundo
-        self.y += msg.linear.y * self.time 
+        self.x += msg.linear.x * self.velocity #Deslocamento = velocidade * tempo, sendo que o tempo é 1 segundo
+        self.y += msg.linear.y * self.velocity 
 
     def reset_callback(self, msg):
         
