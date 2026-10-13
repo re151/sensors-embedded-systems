@@ -20,11 +20,15 @@ class Controller(Node):
         timer = 0.5 #seconds
         self.timer = self.create_timer(timer, self.timer_callback)
 
+        self.velx = 0.0
+        self.ang_velz = 0.0
+
     def timer_callback(self):
         msg = Twist()
-        msg.linear.x = 0.0
-        msg.angular.z = 0.0
+        msg.linear.x = self.velx
+        msg.angular.z = self.ang_velz
         self.publisher_.publish(msg)
+        print(f"Published velocity command: linear.x = {msg.linear.x}, angular.z = {msg.angular.z}")
 
     # ----------------------------------------------------------
     # Subscription to the topic /scan
@@ -40,7 +44,30 @@ class Controller(Node):
 
     def scan_callback(self, msg):
         self.scan_data = msg.ranges
-        if self.scan_data[]
+
+        # Detect obstacles in front of the robot
+        front = list(self.scan_data[0:4]) + list(self.scan_data[356:360])
+
+        if any(0.0 < distance < 0.8 for distance in front):
+            print("Obstacle detected in front of the robot!")
+            self.velx = 0.0
+
+            # Check the left side
+            left = self.scan_data[49:57]
+
+            # Check the right side
+            right = self.scan_data[13:22]
+
+            if any(0.0 < distance <= 2.0 for distance in left):
+                self.ang_velz = 1.5  # Turn left
+            elif any(0.0 < distance <= 2.0 for distance in right):
+                self.ang_velz = -1.5  # Turn right
+            else:
+                self.ang_velz = 1.5  # Default turning direction
+        else:
+            self.velx = 0.22
+            self.ang_velz = 0.0
+
         print(f"Scan data: {self.scan_data}")
 
 
