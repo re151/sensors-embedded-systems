@@ -84,7 +84,7 @@ class Controller(Node):
         # self.gt_subscription = self.create_subscription(
         #     Odometry,
         #     'ground_truth',
-        #     self.odom_callback,
+        #     self.gt_callback,
         #     10)
         # self.gt_subscription  # prevent unused variable warning
 
@@ -141,8 +141,8 @@ class Controller(Node):
         angles_deg = (np.degrees(angles) + 180) % 360 - 180
 
         # Select left and right sectors
-        left_mask = (angles_deg >= 0) & (angles_deg <= 105)
-        right_mask = (angles_deg >= -105) & (angles_deg < 0)
+        left_mask = (angles_deg >= 0) & (angles_deg <= 80)
+        right_mask = (angles_deg >= -80) & (angles_deg < 0)
 
         left = ranges[left_mask].copy()
         right = ranges[right_mask].copy()
@@ -163,31 +163,28 @@ class Controller(Node):
             return None, None
 
         # Find the indices of the three largest distances
-        left_top3 = np.argsort(left_valid * left)[-3:]
-        right_top3 = np.argsort(right_valid * right)[-3:]
+        left_top5 = np.argsort(left_valid * left)[-5:]
+        right_top5 = np.argsort(right_valid * right)[-5:]
 
         # Sort the three indices and select the middle one
-        left_middle = np.sort(left_indices[left_top3])[1]
-        right_middle = np.sort(right_indices[right_top3])[1]
+        left_middle = np.sort(left_indices[left_top5])[1]
+        right_middle = np.sort(right_indices[right_top5])[1]
 
         # Convert the middle indices into angles
         left_angle = np.degrees(msg.angle_min + left_middle * msg.angle_increment)
 
-        # if left_angle > 90:
-        #     left_angle = 85
 
         right_angle = np.degrees(msg.angle_min + right_middle * msg.angle_increment)
-
-        # if right_angle < -90:
-        #     right_angle = -85
 
         # Compare the average distances
         left_mean = np.mean(left[left_valid])
         right_mean = np.mean(right[right_valid])
 
         if left_mean > right_mean:
-            return 'Left', left_angle
+
+            return 'Left', left_angle 
         else:
+
             return 'Right', right_angle
         
 
@@ -224,20 +221,40 @@ class Controller(Node):
     def scan_callback(self, msg):
 
         self.scan_received = True
-        self.scan_data = msg.ranges
+        self.scan_data = np.array(msg.ranges)
 
         # Do not change the target while turning.
         if self.state == 'Turn':
             return
 
         elif self.state == 'FORWARD':
-            front = np.concatenate((self.scan_data[0:10],self.scan_data[220:230])) # ~ +- 16°
 
-            if not(any(d < self.obstacle_distance for d in front)):
+            n = len(self.scan_data)
+            if n == 0:
+                self.velx = 0.0
+                self.ang_velz = 0.0
+                return
+            
+            angles = msg.angle_min + np.arange(n) * msg.angle_increment
+
+            # Convert angles to degrees in [-180, 180).
+            angles_deg = (np.degrees(angles) + 180) % 360 - 180
+
+            # Select the frontal sector: -16° to +16°.
+            front_mask = (angles_deg >= -20) & (angles_deg <= 20)
+            front = self.scan_data[front_mask]
+
+            # Detect obstacles only from valid measurements.
+            valid_front = np.isfinite(front) & (front > 0)
+            obstacle_detected = np.any(
+                valid_front & (front < self.obstacle_distance)
+            )
+
+            if not obstacle_detected:
                 self.velx = self.max_linear_velocity
                 self.ang_velz = 0.0
                 return
-
+            
             # Obstacle detected: stop before selecting a direction.
             self.velx = 0.0
             self.ang_velz = 0.0
@@ -245,8 +262,13 @@ class Controller(Node):
 
             self.direction, angle = self.find_direction(msg)
 
+            # Check whether the LiDAR data is sufficient.
+            if self.direction is None or angle is None:
+                return
+
             # Set the target once, using the current odometry yaw.
             self.target_yaw = self.normalize_angle(self.yaw + math.radians(angle))
+            
             self.state = 'Turn'
 
             self.get_logger().info(f'Obstacle detected. Target yaw: '
@@ -289,6 +311,41 @@ class Controller(Node):
                     self.ang_velz = -self.max_angular_velocity
         else: 
             return
+
+# def gt_callback(self, msg):
+    #     q = msg.pose.pose.orientation
+    #     quaternion = [q.x, q.y, q.z, q.w]
+
+    #     _, _, self.yaw = tf_transformations.euler_from_quaternion(quaternion)
+
+    #     self.odom_received = True
+    #     self.goal_reached(msg)
+        
+    #     if self.state == 'FORWARD':
+    #         return
+        
+    #     elif self.state == 'Turn':
+    #         # Calculate the shortest angular error.
+    #         yaw_error = self.normalize_angle(self.target_yaw - self.yaw)
+
+    #         if abs(yaw_error) < self.yaw_tolerance:
+    #             # Turn complete.
+    #             self.ang_velz = 0.0
+    #             self.velx = self.max_linear_velocity
+    #             self.state = 'FORWARD'
+
+    #             self.get_logger().info('Turn complete. Moving forward.')
+            
+    #         else:
+    #             # Rotate in the direction of the target.
+    #             self.velx = 0.0
+
+    #             if self.direction == 'Left':
+    #                 self.ang_velz = self.max_angular_velocity
+    #             else: 
+    #                 self.ang_velz = -self.max_angular_velocity
+    #     else: 
+    #         return
 
 def main(args=None):
     rclpy.init(args=args)
